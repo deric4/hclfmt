@@ -4,11 +4,11 @@ variables:
   ECR_REGION: us-west-2
 
 stages:
-  - lint
+  #- lint
   - build
   - release
 
-dockerfile_lint:
+.dockerfile_lint:
   stage: lint
   script:
     - dockerfile_lint
