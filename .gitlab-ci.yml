@@ -1,0 +1,47 @@
+variables:
+  ECR_REPO_NAME: tools/hclfmt
+  ECR_ACCOUNT: '475806025084'
+  ECR_REGION: us-west-2
+
+stages:
+  - lint
+  - build
+  - release
+
+dockerfile_lint:
+  stage: lint
+  script:
+    - dockerfile_lint
+
+docker_build:
+  stage: build
+  script:
+    - test -f prebuild && ./prebuild
+    - TAG=${CI_COMMIT_TAG}
+    - test ! $TAG && TAG=${CI_COMMIT_REF_SLUG}
+    - CACHE=''
+    - >
+      function check_cache() {
+        local IMAGE=${ECR_ACCOUNT}.dkr.ecr.${ECR_REGION}.amazonaws.com/${ECR_REPO_NAME}:$1
+        if docker pull ${IMAGE}; then
+          CACHE="${CACHE} --cache-from ${IMAGE}"
+        else
+          echo "Unable to pull ${IMAGE}"
+        fi
+      }
+    - check_cache ${TAG}
+    - check_cache master
+    - check_cache latest
+    - build_command="docker build --build-arg branch=$TAG -t ${ECR_ACCOUNT}.dkr.ecr.${ECR_REGION}.amazonaws.com/${ECR_REPO_NAME}:$TAG ${CACHE} ."
+    - echo $build_command
+    - ${build_command}
+    - docker push ${ECR_ACCOUNT}.dkr.ecr.${ECR_REGION}.amazonaws.com/${ECR_REPO_NAME}:$TAG
+
+docker_release:
+  only:
+    - tags
+  when: manual
+  stage: release
+  script:
+    - MANIFEST=$(aws ecr batch-get-image --region ${ECR_REGION} --repository-name ${ECR_REPO_NAME} --region ${ECR_REGION} --image-ids imageTag=${CI_COMMIT_TAG} --query 'images[0].imageManifest' --output text)
+    - aws ecr put-image --region ${ECR_REGION} --repository-name ${ECR_REPO_NAME} --image-tag latest --image-manifest "$MANIFEST"
